@@ -1,0 +1,42 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:   # permite lanzarlo manualmente desde GitHub
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias
+        run: |
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build con PyInstaller
+        run: pyinstaller woocommerce_connector.spec --noconfirm
+
+      - name: Verificar que el exe existe
+        run: |
+          if (!(Test-Path "dist\WooCommerceConnector\WooCommerceConnector.exe")) {
+            Write-Error "ERROR: el exe no fue generado"
+            exit 1
+          }
+          Write-Host "OK: exe generado correctamente"
+
+      - name: Subir artefacto (descargable desde GitHub Actions)
+        uses: actions/upload-artifact@v4
+        with:
+          name: WooCommerceConnector-Windows
+          path: dist/WooCommerceConnector/
+          retention-days: 30
