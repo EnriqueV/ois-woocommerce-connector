@@ -1,17 +1,14 @@
 import customtkinter as ctk
 from tkinter import messagebox
-from tinydb import TinyDB, Query
+from tinydb import TinyDB
 import os
 import sys
 import threading
 import logging
 import queue
 
-from woocommerce_client import (
-    build_client_from_db,
-    build_ois_client_from_db,
-    SYNC_LIMIT,
-)
+from ois_client import OISClient
+from shopify_sync import LOCATION, ShopifyClient, apply_preview, preview, read_connector_env
 
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
@@ -36,7 +33,6 @@ DB_PATH = os.path.join(_APP_DIR, "data.json")
 db = TinyDB(DB_PATH)
 tbl_settings   = db.table("settings")
 tbl_programming = db.table("programming")
-tbl_sync       = db.table("sync")
 
 
 # ─────────────────────────────────────────────
@@ -180,9 +176,12 @@ class SyncFrame(ctk.CTkFrame):
         super().__init__(master, fg_color="transparent", **kwargs)
         self._app_root = app_root
         self._ui_handler: UILogHandler | None = None
+        self._shopify_plan = None
+        self._preview_revision = 0
+        self._shopify_results = queue.Queue()
+        self._busy = False
         self._build()
         self._setup_log_handler()
-        self._load()
 
     # ── construcción de la UI ─────────────────────────────────────────
     def _build(self):
@@ -201,41 +200,26 @@ class SyncFrame(ctk.CTkFrame):
         options_frame = ctk.CTkFrame(self, fg_color="#1E1E2E", corner_radius=12)
         options_frame.grid(row=1, column=0, sticky="ew", padx=40, pady=(0, 14))
 
-        self.sync_option = ctk.StringVar(value="new")
-
         ctk.CTkLabel(
-            options_frame,
-            text="Selecciona el modo de sincronización:",
-            font=ctk.CTkFont(size=13),
-            text_color="#AAAAAA",
-        ).pack(anchor="w", padx=20, pady=(14, 8))
+            options_frame, text=f"Shopify · {LOCATION}",
+        ).pack(anchor="w", padx=20, pady=10)
 
-        ctk.CTkRadioButton(
-            options_frame,
-            text="Sincronizar y borrar todo",
-            variable=self.sync_option,
-            value="all",
-            font=ctk.CTkFont(size=13),
-        ).pack(anchor="w", padx=20, pady=(2, 2))
-
-        ctk.CTkRadioButton(
-            options_frame,
-            text="Sincronizar solo productos nuevos",
-            variable=self.sync_option,
-            value="new",
-            font=ctk.CTkFont(size=13),
-        ).pack(anchor="w", padx=20, pady=(2, 14))
-
-        # Botón sincronizar
+        actions = ctk.CTkFrame(self, fg_color="transparent")
+        actions.grid(row=2, column=0, sticky="ew", padx=40, pady=(0, 12))
         self.sync_btn = ctk.CTkButton(
-            self,
-            text="  Sincronizar",
+            actions,
+            text="Previsualizar cambios",
             height=44,
             font=ctk.CTkFont(size=15, weight="bold"),
             corner_radius=10,
-            command=self._on_sync,
+            command=self._preview_shopify,
         )
-        self.sync_btn.grid(row=2, column=0, sticky="ew", padx=40, pady=(0, 12))
+        self.sync_btn.pack(side="left", fill="x", expand=True)
+        self.apply_btn = ctk.CTkButton(
+            actions, text="Aplicar cambios", height=44, state="disabled",
+            command=self._apply_shopify,
+        )
+        self.apply_btn.pack(side="left", padx=(10, 0))
 
         # ── Panel de logs ─────────────────────────────────────────────
         log_card = ctk.CTkFrame(self, fg_color="#1E1E2E", corner_radius=12)
@@ -282,16 +266,16 @@ class SyncFrame(ctk.CTkFrame):
         self.log_textbox.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
 
     def _setup_log_handler(self):
-        """Conecta el logger del módulo woo_connector con el textbox."""
-        woo_log = logging.getLogger("woo_connector")
+        """Conecta el logger del módulo ois_connector con el textbox."""
+        ois_log = logging.getLogger("ois_connector")
         self._ui_handler = UILogHandler(self.log_textbox, self._app_root)
         self._ui_handler.setLevel(logging.DEBUG)
         # Evitar duplicar el handler si el frame se reconstruye
-        woo_log.handlers = [
-            h for h in woo_log.handlers
+        ois_log.handlers = [
+            h for h in ois_log.handlers
             if not isinstance(h, UILogHandler)
         ]
-        woo_log.addHandler(self._ui_handler)
+        ois_log.addHandler(self._ui_handler)
 
     def _clear_logs(self):
         self.log_textbox.configure(state="normal")
@@ -307,81 +291,145 @@ class SyncFrame(ctk.CTkFrame):
         self.log_textbox.see("end")
 
     # ── persistencia ──────────────────────────────────────────────────
-    def _load(self):
-        rows = tbl_sync.all()
-        if rows:
-            self.sync_option.set(rows[-1].get("mode", "new"))
+    def invalidate_preview(self):
+        self._preview_revision += 1
+        self._shopify_plan = None
+        self.apply_btn.configure(state="disabled")
 
-    # ── validación ────────────────────────────────────────────────────
-    def _validate_settings(self) -> bool:
-        rows = tbl_settings.all()
-        if not rows:
-            self._append_log("⚠  Completa y guarda el paso Settings antes de sincronizar.", "#FBBF24")
-            return False
-
-        cfg = rows[-1]
-        required = [
-            "OIS Products URL", "Token / API Key",
-            "WordPress URL", "WordPress Client Key", "WordPress Client Secret",
-        ]
-        missing = [k for k in required if not cfg.get(k, "").strip()]
-        if missing:
-            self._append_log(f"⚠  Faltan en Settings: {', '.join(missing)}", "#FBBF24")
-            return False
-        return True
-
-    # ── botón sincronizar ─────────────────────────────────────────────
-    def _on_sync(self):
-        self._clear_logs()
-        if not self._validate_settings():
+    def _preview_shopify(self):
+        if self._busy:
             return
-
-        mode = self.sync_option.get()
-        tbl_sync.truncate()
-        tbl_sync.insert({"mode": mode})
-
-        if mode == "new":
-            self._start_sync_new_products()
-        else:
-            self._append_log("⚠  Modo 'borrar todo' aún no implementado.", "#FBBF24")
-
-    # ── sync nuevos productos ─────────────────────────────────────────
-    def _start_sync_new_products(self):
-        self.sync_btn.configure(state="disabled", text="  Sincronizando...")
-        self._append_log(f"▶  Iniciando sincronización (límite: {SYNC_LIMIT} productos)...", "#60A5FA")
-        threading.Thread(target=self._run_sync_new, daemon=True).start()
-
-    def _run_sync_new(self):
+        self.invalidate_preview()
+        self._clear_logs()
+        rows = tbl_settings.all()
+        cfg = rows[-1] if rows else {}
+        env = read_connector_env()
+        url = (env.get("OIS_PRODUCTS_URL") or cfg.get("OIS Products URL") or "").strip()
+        token = (env.get("OIS_API_TOKEN") or cfg.get("Token / API Key") or "").strip()
+        shop = (env.get("SHOPIFY_SHOP") or cfg.get("Shopify shop") or "w7hsns-n1").strip()
+        client_id = (env.get("SHOPIFY_CLIENT_ID") or cfg.get("Shopify Client ID") or "").strip()
+        secret = (env.get("SHOPIFY_CLIENT_SECRET") or "").strip()
+        if not all((url, client_id, secret)) or not (token or OISClient.has_url_key(url)):
+            self._append_log(
+                "Completa la URL de OIS con ?key= o su token por separado, el Client ID y SHOPIFY_CLIENT_SECRET.",
+                "#F87171",
+            )
+            return
         try:
-            ois_client = build_ois_client_from_db(tbl_settings)
-            woo_client = build_client_from_db(tbl_settings)
+            shopify = ShopifyClient(shop.strip(), client_id, secret)
+        except ValueError as exc:
+            self._append_log(str(exc), "#F87171")
+            return
+        ois = OISClient(url, token)
 
-            products = ois_client.fetch_as_woo_products()
-            if not products:
-                self.after(0, lambda: self._sync_error("OIS no devolvió productos."))
+        def load_preview():
+            try:
+                items = ois.fetch_catalog()
+            except RuntimeError:
+                raise
+            except Exception:
+                raise RuntimeError("No se pudo consultar el catálogo de OIS.") from None
+            groups = items.get("ResultItemGroups")
+            group_count = len(groups) if isinstance(groups, list) else None
+            return shopify, len(items["ResultItems"]), group_count, preview(shopify, items)
+
+        revision = self._preview_revision
+
+        def show_if_current(result):
+            if revision == self._preview_revision:
+                self._show_shopify_preview(result)
+            else:
+                self._append_log("La configuración cambió. Genera una nueva vista previa.", "#FBBF24")
+
+        self._start_shopify(load_preview, show_if_current)
+
+    def _show_shopify_preview(self, result):
+        shopify, received, group_count, (location, rows, errors) = result
+        changes = [row for row in rows if row["action"] != "unchanged"]
+        self._append_log(
+            f"{LOCATION} · {received} productos recibidos de OIS · "
+            f"{len(changes)} con cambios · {len(rows) - len(changes)} sin cambios · "
+            f"{received - len(rows)} omitidos",
+        )
+        if group_count is None:
+            self._append_log("OIS no devolvió una lista en ResultItemGroups.")
+        else:
+            self._append_log(f"{group_count} grupos recibidos de OIS (ResultItemGroups).")
+        for row in changes:
+            variant = row["variant"]
+            if variant is None:
+                detail = (
+                    f"Crear y publicar · Caja: {row['price']}, stock {row['available']} · "
+                    f"Unidad: {row['unit_price']}, stock 0"
+                )
+            else:
+                item = variant["inventoryItem"]
+                level = item["inventoryLevel"]
+                previous = level["quantities"][0]["quantity"] if level else "sin asignar"
+                detail = (
+                    f"Precio {variant['price']} → {row['price']} · "
+                    f"stock {previous} → {row['available']}"
+                )
+                if row["unit_variant"]:
+                    detail += f" · precio Unidad {row['unit_variant']['price']} → {row['unit_price']}"
+                if row["publish"]:
+                    detail += " · publicar en Online Store"
+                if not item["tracked"]:
+                    detail += " · activar seguimiento de inventario"
+            self._append_log(f"{row['sku']} · {detail}")
+        for error in errors:
+            self._append_log(error, "#F87171")
+        if changes:
+            self._shopify_plan = shopify, location, changes
+            self.apply_btn.configure(state="normal")
+
+    def _apply_shopify(self):
+        if self._busy or self._shopify_plan is None:
+            return
+        shopify, location, changes = self._shopify_plan
+        if not messagebox.askyesno(
+            "Sincronizar Shopify",
+            f"¿Aplicar {len(changes)} cambios en Shopify? El stock se actualizará en {LOCATION}.",
+            parent=self._app_root,
+        ):
+            return
+        self.invalidate_preview()
+        self._start_shopify(
+            lambda: apply_preview(shopify, location, changes), self._show_shopify_result,
+        )
+
+    def _show_shopify_result(self, result):
+        applied, errors = result
+        self._append_log(f"{len(applied)} SKU sincronizados · {len(errors)} errores.", DONE_COLOR)
+        for error in errors:
+            self._append_log(error, "#F87171")
+
+    def _start_shopify(self, operation, on_success):
+        self._busy = True
+        self.sync_btn.configure(state="disabled", text="Procesando…")
+        self.apply_btn.configure(state="disabled")
+
+        def worker():
+            try:
+                self._shopify_results.put((operation(), None))
+            except Exception as exc:
+                self._shopify_results.put((None, str(exc)))
+
+        def poll():
+            try:
+                result, error = self._shopify_results.get_nowait()
+            except queue.Empty:
+                self.after(80, poll)
                 return
+            self._busy = False
+            self.sync_btn.configure(state="normal", text="Previsualizar cambios")
+            if error is not None:
+                self._append_log(error, "#F87171")
+            else:
+                on_success(result)
 
-            result  = woo_client.create_products_batch(products)
-            created = result.get("create", [])
-            ok      = [p for p in created if p.get("id")]
-            errors  = [p for p in created if not p.get("id") and "error" in p]
-
-            summary = f"✓  {len(ok)} producto(s) creado(s)"
-            if errors:
-                summary += f"  |  ⚠ {len(errors)} sin crear"
-            self.after(0, lambda: self._sync_done(summary))
-
-        except Exception as exc:
-            self.after(0, lambda: self._sync_error(str(exc)))
-
-    def _sync_done(self, msg: str):
-        self._append_log(f"\n{msg}", DONE_COLOR)
-        self.sync_btn.configure(state="normal", text="  Sincronizar")
-
-    def _sync_error(self, msg: str):
-        self._append_log(f"✗  {msg}", "#F87171")
-        self.sync_btn.configure(state="normal", text="  Sincronizar")
-
+        threading.Thread(target=worker, daemon=True).start()
+        self.after(80, poll)
 
 # ─────────────────────────────────────────────
 # STEP 2 — PROGRAMMING
@@ -503,11 +551,9 @@ class ProgrammingFrame(ctk.CTkFrame):
 class SettingsFrame(ctk.CTkFrame):
     FIELDS = [
         ("OIS Products URL",        "https://ois.ejemplo.com/products", False),
-        ("Image URL",               "https://cdn.ejemplo.com/images",   False),
         ("Token / API Key",         "••••••••••••••••",                 True),
-        ("WordPress URL",           "https://ejemplo.com/wp-json",      False),
-        ("WordPress Client Key",    "ck_xxxxxxxxxxxx",                  False),
-        ("WordPress Client Secret", "cs_xxxxxxxxxxxx",                  True),
+        ("Shopify shop",            "w7hsns-n1",                        False),
+        ("Shopify Client ID",       "Client ID de Shopify",             False),
     ]
 
     def __init__(self, master, **kwargs):
@@ -570,6 +616,8 @@ class SettingsFrame(ctk.CTkFrame):
             command=self._on_save,
         ).pack(padx=40, fill="x", pady=(4, 6))
 
+        ctk.CTkLabel(self.scroll, text="Puedes configurar Shopify y OIS en .env.").pack()
+
         self.status_label = ctk.CTkLabel(
             self.scroll,
             text="",
@@ -590,7 +638,14 @@ class SettingsFrame(ctk.CTkFrame):
 
     def _on_save(self):
         data = {k: e.get().strip() for k, e in self.entries.items()}
-        empty = [k for k, v in data.items() if not v]
+        env = read_connector_env()
+        url = (env.get("OIS_PRODUCTS_URL") or data["OIS Products URL"]).strip()
+        token = (env.get("OIS_API_TOKEN") or data["Token / API Key"]).strip()
+        empty = []
+        if not url:
+            empty.append("OIS Products URL")
+        elif not token and not OISClient.has_url_key(url):
+            empty.append("Token / API Key")
         if empty:
             self.status_label.configure(
                 text=f"⚠  Completa: {', '.join(empty)}",
@@ -599,6 +654,7 @@ class SettingsFrame(ctk.CTkFrame):
             return
         tbl_settings.truncate()
         tbl_settings.insert(data)
+        self.winfo_toplevel().frames[0].invalidate_preview()
         self.status_label.configure(text="✓  Configuración guardada", text_color=DONE_COLOR)
 
 
@@ -608,7 +664,7 @@ class SettingsFrame(ctk.CTkFrame):
 class App(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("WooCommerce Connector")
+        self.title("OIS Connector")
         self.geometry("700x600")
         self.resizable(False, False)
         self.current_step = 0
@@ -691,4 +747,4 @@ class App(ctk.CTk):
             self._show_step(self.current_step - 1)
 
     def _finish(self):
-        messagebox.showinfo("WooCommerce Connector", "¡Configuración completada!\nDatos guardados en data.json")
+        messagebox.showinfo("OIS Connector", "¡Configuración completada!\nDatos guardados en data.json")

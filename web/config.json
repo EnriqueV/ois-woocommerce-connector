@@ -1,0 +1,33 @@
+{
+  "settings": {
+      "OIS Products URL": "https://www.oisimobile.com/OISWC/Inventory.svc/item",
+      "Image URL": "https://www.oisimobile.com/OISWC/inventory.svc/Images",
+      "Local Images Directory": "/wp-content/uploads/2026/04",
+      "Public Images Base URL": "https://www.latinproductsdistribution.com/wp-content/uploads/2026/04",
+      "DigitalOcean Spaces Endpoint": "https://instancias.nyc3.digitaloceanspaces.com",
+      "DigitalOcean Spaces Access Key": "DO801VPPGRWQ69X2Q67B",
+      "DigitalOcean Spaces Secret Key": "bDBLvfwGYa3bdYqMk/W7AkPXmuHPLPOG6dozAGCJ2eM",
+      "DigitalOcean Spaces Directory": "file_img",
+      "Token / API Key": "CAy9VpwFSDj1pykoGPtGxc10r%2FeBAWFiPsu%2FwXDS1pJl4ZRjjFY4RMcSv2XlxjXHM0jXCNYuHvk4FiNiIWzXwEZtbvJ33JxIt7nFFZpf2yA%3D",
+      "WordPress URL": "https://www.latinproductsdistribution.com/",
+      "WordPress Username": "",
+      "WordPress Application Password": "",
+      "WordPress Client Key": "ck_f79c8d3eb4036892b5019cf823f885598ebdb965",
+      "WordPress Client Secret": "cs_e2937f9eafae36a67591b92fb21da9403db861cf"
+  },
+  "programming": {
+      "days": {
+          "Lunes": true,
+          "Martes": true,
+          "Miércoles": true,
+          "Jueves": true,
+          "Viernes": true,
+          "Sábado": true,
+          "Domingo": true
+      },
+      "time": "00:00"
+  },
+  "sync": {
+      "mode": "all"
+  }
+}

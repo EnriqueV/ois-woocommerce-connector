@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+    <title>WooCommerce Connector (Web)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+  </head>
+  <body class="min-h-screen bg-slate-950 text-slate-100">
+    <main class="mx-auto flex min-h-screen w-full max-w-5xl flex-col">
+      <header class="border-b border-slate-800 bg-slate-900/80 px-6 py-6">
+        <div id="stepper" class="grid grid-cols-5 items-center gap-2"></div>
+      </header>
+
+      <section class="flex-1 bg-slate-900 px-6 py-6">
+        <div id="view-sync" class="view space-y-5">
+          <h1 class="text-2xl font-bold">Sincronización</h1>
+
+          <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+            <p class="text-sm text-slate-300">
+              Esta acción toma los productos desde OIS e intenta sincronizarlos hacia WooCommerce usando la configuración guardada.
+            </p>
+          </div>
+
+          <div class="grid gap-3 md:grid-cols-2">
+            <button
+              id="btn-test-connection"
+              class="w-full rounded-lg bg-slate-800 px-4 py-3 font-semibold hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-700"
+            >
+              Probar conexión
+            </button>
+            <button
+              id="btn-sync"
+              class="w-full rounded-lg bg-sky-600 px-4 py-3 font-semibold hover:bg-sky-500 disabled:cursor-not-allowed disabled:bg-slate-700"
+            >
+              Sincronizar cambios
+            </button>
+            <button
+              id="btn-create-categories"
+              class="w-full rounded-lg bg-emerald-600 px-4 py-3 font-semibold hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-700 md:col-span-2"
+            >
+              Crear categorías
+            </button>
+          </div>
+
+          <div class="rounded-xl border border-slate-800 bg-slate-900 p-4">
+            <div class="mb-3 flex items-center justify-between">
+              <h2 class="text-sm font-semibold text-slate-400">Registro de actividad</h2>
+              <button id="btn-clear-logs" class="rounded-md bg-slate-800 px-3 py-1 text-xs hover:bg-slate-700">Limpiar</button>
+            </div>
+            <pre
+              id="log-panel"
+              class="h-64 overflow-auto rounded-lg bg-slate-950 p-3 font-mono text-xs leading-5 text-slate-200"
+            ></pre>
+          </div>
+        </div>
+
+        <div id="view-programming" class="view hidden space-y-5">
+          <h1 class="text-2xl font-bold">Programación</h1>
+          <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+            <p class="mb-3 text-sm text-slate-400">Días de ejecución:</p>
+            <div id="days-grid" class="grid grid-cols-2 gap-2 md:grid-cols-4"></div>
+          </div>
+          <div class="rounded-xl border border-slate-800 bg-slate-900 p-5">
+            <label class="mb-2 block text-sm text-slate-400">Hora de ejecución (HH:MM, hora de Utah):</label>
+            <input
+              id="program-time"
+              type="time"
+              class="w-40 rounded-md border border-slate-700 bg-slate-950 px-3 py-2 outline-none ring-sky-500 focus:ring-2"
+            />
+          </div>
+          <button id="btn-save-programming" class="w-full rounded-lg bg-sky-600 px-4 py-3 font-semibold hover:bg-sky-500">
+            Guardar programación
+          </button>
+          <p id="programming-status" class="text-sm text-slate-400"></p>
+        </div>
+
+        <div id="view-settings" class="view hidden space-y-5">
+          <h1 class="text-2xl font-bold">Configuración</h1>
+          <div class="relative">
+            <div id="settings-lock-panel" class="absolute inset-0 z-10 flex items-center justify-center rounded-xl bg-slate-950/85 p-5 backdrop-blur-sm">
+              <div class="w-full max-w-sm rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl">
+                <h2 class="mb-2 text-lg font-bold">Settings bloqueado</h2>
+                <p class="mb-4 text-sm text-slate-400">Ingresa la clave de acceso para modificar la configuración.</p>
+                <input
+                  id="settings-access-key"
+                  type="password"
+                  class="mb-3 w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-2 outline-none ring-sky-500 focus:ring-2"
+                  autocomplete="off"
+                />
+                <button id="btn-unlock-settings" class="w-full rounded-lg bg-sky-600 px-4 py-2.5 font-semibold hover:bg-sky-500">
+                  Desbloquear
+                </button>
+                <p id="settings-lock-status" class="mt-3 min-h-5 text-sm text-slate-400"></p>
+              </div>
+            </div>
+            <div id="settings-card" class="rounded-xl border border-slate-800 bg-slate-900 p-5 opacity-60">
+              <div id="settings-fields" class="space-y-4"></div>
+            </div>
+          </div>
+          <button id="btn-save-settings" class="w-full rounded-lg bg-sky-600 px-4 py-3 font-semibold hover:bg-sky-500">
+            Guardar configuración
+          </button>
+          <p id="settings-status" class="text-sm text-slate-400"></p>
+        </div>
+      </section>
+
+      <footer class="flex items-center justify-between border-t border-slate-800 bg-slate-900/80 px-6 py-4">
+        <button
+          id="btn-prev"
+          class="rounded-lg bg-slate-800 px-4 py-2 text-sm hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          ← Anterior
+        </button>
+        <button id="btn-next" class="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold hover:bg-sky-500">Siguiente →</button>
+      </footer>
+    </main>
+
+    <script src="./main.js?v=20260501-2"></script>
+  </body>
+</html>

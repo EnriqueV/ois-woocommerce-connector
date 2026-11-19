@@ -1,4 +1,5 @@
 import logging
+from urllib.parse import urlsplit
 
 import requests
 
@@ -18,11 +19,19 @@ class OISClient:
     """
 
     def __init__(self, ois_url: str, api_token: str):
-        self.ois_url   = ois_url.rstrip("/")
-        self.api_token = api_token
+        self.ois_url = ois_url.strip()
+        self.api_token = api_token.strip()
+
+    @staticmethod
+    def has_url_key(url: str) -> bool:
+        return any(
+            name == "key" and value
+            for name, _, value in (
+                part.partition("=") for part in urlsplit(url).query.split("&")
+            )
+        )
 
         log.info("OISClient inicializado")
-        log.debug("  ois_url  : %s", self.ois_url)
 
     def _build_url(self) -> str:
         """
@@ -30,10 +39,18 @@ class OISClient:
         El token ya viene URL-encoded (%2B, %3D, etc.) desde el formulario,
         por lo que se concatena directamente sin re-encodear.
         """
-        return f"{self.ois_url}?key={self.api_token}"
+        if self.has_url_key(self.ois_url):
+            return self.ois_url
+        url = urlsplit(self.ois_url)
+        params = [part for part in url.query.split("&") if part and part.partition("=")[0] != "key"]
+        params.append(f"key={self.api_token}")
+        return url._replace(path=url.path.rstrip("/"), query="&".join(params)).geturl()
 
     def fetch_items(self) -> list[dict]:
-        """Hace el GET y devuelve la lista cruda de ResultItems."""
+        return self.fetch_catalog()["ResultItems"]
+
+    def fetch_catalog(self) -> dict:
+        """Devuelve el catálogo y sus tablas de precios en una sola consulta."""
         url = self._build_url()
         log.info("OIS fetch_items → GET catálogo")
 
@@ -42,10 +59,8 @@ class OISClient:
         log.debug("  HTTP %s  (%d bytes)", response.status_code, len(response.content))
 
         if response.status_code != 200:
-            log.error("  OIS error %s: %s", response.status_code, response.text[:300])
-            raise Exception(
-                f"OIS API error {response.status_code}: {response.text[:200]}"
-            )
+            log.error("OIS devolvió HTTP %s.", response.status_code)
+            raise RuntimeError(f"OIS devolvió HTTP {response.status_code}.")
 
         data = response.json()
         login_status = data.get("Login", {}).get("status", "unknown")
@@ -67,7 +82,7 @@ class OISClient:
 
         log.info("  ✓ OIS devolvió %d item(s) en total  (TotalRecords=%s)",
                  len(items), data.get("TotalRecords"))
-        return items
+        return data
 
 def build_ois_client_from_db(tbl_settings, client_type=OISClient) -> OISClient:
     """
@@ -90,7 +105,6 @@ def build_ois_client_from_db(tbl_settings, client_type=OISClient) -> OISClient:
     ois_url   = cfg.get("OIS Products URL", "").strip()
     api_token = cfg.get("Token / API Key", "").strip()
 
-    log.debug("  OIS Products URL  : %s", ois_url or "(vacío)")
 
     missing = [
         name for name, val in [
@@ -99,6 +113,9 @@ def build_ois_client_from_db(tbl_settings, client_type=OISClient) -> OISClient:
         ]
         if not val
     ]
+    if OISClient.has_url_key(ois_url) and "Token / API Key" in missing:
+        missing.remove("Token / API Key")
+
     if missing:
         log.error("  Faltan campos: %s", missing)
         raise ValueError(f"Faltan campos en Settings: {', '.join(missing)}")
