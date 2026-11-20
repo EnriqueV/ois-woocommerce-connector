@@ -360,7 +360,7 @@ class SyncFrame(ctk.CTkFrame):
             if variant is None:
                 detail = (
                     f"Crear y publicar · Caja: {row['price']}, stock {row['available']} · "
-                    f"Unidad: {row['unit_price']}, stock 0"
+                    f"Unidad: {row['unit_price']}, stock {row['available']}"
                 )
             else:
                 item = variant["inventoryItem"]
@@ -371,6 +371,9 @@ class SyncFrame(ctk.CTkFrame):
                     f"stock {previous} → {row['available']}"
                 )
                 if row["unit_variant"]:
+                    unit_level = row["unit_variant"]["inventoryItem"]["inventoryLevel"]
+                    unit_stock = unit_level["quantities"][0]["quantity"] if unit_level else "sin asignar"
+                    detail += f" · stock Unidad {unit_stock} → {row['available']}"
                     detail += f" · precio Unidad {row['unit_variant']['price']} → {row['unit_price']}"
                 if row["publish"]:
                     detail += " · publicar en Online Store"

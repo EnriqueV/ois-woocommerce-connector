@@ -22,7 +22,7 @@ solicita confirmación. Cada vista previa sirve para una aplicación y vence a l
 Puedes recargar la página para consultar una operación que sigue ejecutándose.
 
 Los productos nuevos tienen Unidad y Caja y se publican en Online Store. El
-stock de OIS se asigna a Caja en Shop location. Unidad empieza con stock cero.
+mismo stock de OIS se asigna a Unidad y Caja en Shop location.
 Los productos anteriores de una sola variante mantienen la estructura que
 soporta el motor actual.
 

@@ -50,9 +50,11 @@ function showPreview(result) {
     priceCell(row, item.variant?.price, item.price); priceCell(row, item.unit_variant?.price, item.unit_price);
     const quantities = item.variant?.inventoryItem?.inventoryLevel?.quantities;
     priceCell(row, quantities?.[0]?.quantity, item.available);
+    const unitQuantities = item.unit_variant?.inventoryItem?.inventoryLevel?.quantities;
+    priceCell(row, unitQuantities?.[0]?.quantity, item.unit_variant || !item.variant ? item.available : "—");
     $("rows").append(row);
   }
-  if (!result.rows.length) { const row = document.createElement("tr"); const td = cell(row, "OIS no devolvió productos utilizables."); td.colSpan = 5; $("rows").append(row); }
+  if (!result.rows.length) { const row = document.createElement("tr"); const td = cell(row, "OIS no devolvió productos utilizables."); td.colSpan = 6; $("rows").append(row); }
   errors(result.errors); $("status").textContent = "Vista previa lista. Revisa los cambios antes de aplicarlos.";
 }
 async function poll() {

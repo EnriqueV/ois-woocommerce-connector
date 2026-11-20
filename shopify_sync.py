@@ -226,7 +226,7 @@ class ShopifyClient:
                     ],
                 }
                 for name, variant_sku, variant_price, stock in (
-                    ("Unidad", unit_sku(sku), unit_price, 0),
+                    ("Unidad", unit_sku(sku), unit_price, quantity),
                     ("Caja", sku, price, quantity),
                 )
             ],
@@ -367,7 +367,9 @@ def preview(shopify, catalog, *, selected_sku=None):
             publish = False
             if variant:
                 action = shopify.update_variant(variant, price, quantity, location, False)
-                if unit_variant and Decimal(unit_variant["price"]) != unit_price:
+                if unit_variant and shopify.update_variant(
+                    unit_variant, unit_price, quantity, location, False,
+                ) != "unchanged":
                     action = "update"
                 product = variant["product"]
                 publish = product["handle"] == ois_handle(sku) and (
@@ -418,7 +420,7 @@ def apply_preview(shopify, location, changes):
                     shopify.update_variant(variant, price, quantity, location, True)
                 if row["unit_variant"]:
                     shopify.update_variant(
-                        row["unit_variant"], Decimal(row["unit_price"]), None, location, True,
+                        row["unit_variant"], Decimal(row["unit_price"]), quantity, location, True,
                     )
                 if row["publish"]:
                     product = variant["product"]
