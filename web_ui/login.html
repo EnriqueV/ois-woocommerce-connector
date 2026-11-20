@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="es">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ingresar · OIS Shopify</title><link rel="stylesheet" href="/assets/style.css"></head>
+<body><header><a href="/login">OIS <span>/ Shopify</span></a></header>
+<main class="login"><section class="panel"><p class="eyebrow">CONECTOR DE CATÁLOGO</p><h1>Iniciar sesión</h1><p>Ingresa para revisar y sincronizar tu catálogo.</p>
+{% if error %}<p role="alert">{{ error }}</p>{% endif %}
+<form method="post" action="/login"><input type="hidden" name="csrf" value="{{ csrf }}">
+<label>Usuario<input name="username" autocomplete="username" required autofocus maxlength="200"></label>
+<label>Contraseña<input name="password" type="password" autocomplete="current-password" required maxlength="1000"></label>
+<button type="submit">Ingresar</button></form></section></main></body></html>

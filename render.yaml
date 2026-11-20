@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: ois-shopify-connector
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements-web.txt
+    startCommand: gunicorn --workers 1 --threads 4 --bind 0.0.0.0:$PORT 'web_app:create_app()'
+    healthCheckPath: /health
+    envVars:
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_USERNAME
+        value: AdminOis
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: SHOPIFY_SHOP
+        value: w7hsns-n1
+      - key: SHOPIFY_CLIENT_ID
+        sync: false
+      - key: SHOPIFY_CLIENT_SECRET
+        sync: false
+      - key: OIS_PRODUCTS_URL
+        sync: false
+      - key: OIS_API_TOKEN
+        sync: false
