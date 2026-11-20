@@ -2,3 +2,11 @@
 .login{max-width:540px;margin:60px auto}.login label{display:block;margin:20px 0}.login button{width:100%;margin-top:8px}
 
 .product-image{width:88px;height:88px;object-fit:contain;margin:12px 8px 0 0;border:1px solid #dce5e7;border-radius:6px;background:white}
+
+.activity{position:sticky;top:12px;z-index:10;display:flex;align-items:center;gap:16px;padding:20px 24px;margin:20px 0;background:#e4f2ec;border:1px solid #9acbb7;border-radius:10px;box-shadow:0 4px 18px #143c3812;color:#174e3e}
+.activity[hidden]{display:none}
+.activity strong{display:block;font-size:16px}
+.activity span:not(.spinner){display:block;margin-top:5px;font-size:14px;color:#42695b}
+.spinner{width:28px;height:28px;flex-shrink:0;border:3px solid #b1d7c8;border-top-color:#12634e;border-radius:50%;animation:loading-spin .8s linear infinite}
+@keyframes loading-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.spinner{animation:none}}

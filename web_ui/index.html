@@ -10,6 +10,10 @@
 <header><a href="/">OIS <span>/ Shopify</span></a><span class="location">Inventario · Shop location</span><form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secondary">Cerrar sesión</button></form></header>
 <main>
 <div class="heading"><div><p class="eyebrow">CONECTOR DE CATÁLOGO</p><h1>Sincronización</h1><p>Revisa precios, existencias y publicación antes de aplicar los cambios.</p></div><button id="preview">Previsualizar cambios</button></div>
+<div id="activity" class="activity" role="status" aria-live="polite" hidden>
+<span class="spinner" aria-hidden="true"></span>
+<div><strong id="activity-message">Procesando…</strong><span>Espera a que termine la operación.</span></div>
+</div>
 <div id="status" role="status" aria-live="polite">Listo para consultar OIS.</div>
 <section class="metrics" aria-label="Resumen">
 <div><span>Productos recibidos</span><strong id="received">—</strong></div>

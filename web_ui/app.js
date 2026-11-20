@@ -13,7 +13,10 @@ async function api(path, data) {
   if (!response.ok) throw new Error(result.error || "No se pudo completar la operación.");
   return result;
 }
-function busy(active) {
+function busy(active, message = "Comprobando el estado de la sincronización…") {
+  $("activity").hidden = !active;
+  document.querySelector("main").setAttribute("aria-busy", String(active));
+  if (active) $("activity-message").textContent = message;
   $("preview").disabled = active;
   $("apply").disabled = active || !planId || !changed;
   for (const element of $("config").elements) element.disabled = active;
@@ -76,14 +79,21 @@ async function poll() {
         }
         break;
       }
-      $("status").textContent = ["preview", "images-preview"].includes(job.operation) ? "Consultando OIS y Shopify…" : "Aplicando cambios en Shopify…";
+      const message = job.operation === "preview"
+        ? "Consultando productos e imágenes de OIS y Shopify…"
+        : "Sincronizando productos, stock e imágenes en Shopify…";
+      $("activity-message").textContent = message;
+      $("status").textContent = message;
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
   } catch (error) { planId = null; errors([error.message]); $("status").textContent = "La operación requiere atención."; }
   finally { polling = false; busy(false); }
 }
 async function start(operation, data = {}) {
-  busy(true); errors([]);
+  busy(true, operation === "preview"
+    ? "Consultando productos e imágenes de OIS y Shopify…"
+    : "Sincronizando productos, stock e imágenes en Shopify…");
+  errors([]);
   try { await api("/api/" + operation, data); await poll(); }
   catch (error) { errors([error.message]); busy(false); }
 }
@@ -95,7 +105,7 @@ $("apply").onclick = () => {
 $("cancel").onclick = () => $("confirm").close();
 $("confirm-apply").onclick = () => { $("confirm").close(); const id = planId; planId = null; start("apply", {plan_id: id}); };
 $("config").onsubmit = async (event) => {
-  event.preventDefault(); const data = Object.fromEntries(new FormData(event.target)); busy(true);
+  event.preventDefault(); const data = Object.fromEntries(new FormData(event.target)); busy(true, "Guardando configuración…");
   try {
     const result = await api("/api/config", data); planId = null;
     $("saved").textContent = result.overridden.length ? "Guardado. Variables de terminal con prioridad: " + result.overridden.join(", ") : "Configuración guardada.";
