@@ -430,7 +430,7 @@ def apply_preview(shopify, location, changes):
                     row["title"], sku, price, Decimal(row["unit_price"]), quantity, location,
                 )
                 shopify.publish_product(product_id, "DRAFT", False, publication)
-            applied.append(row)
+            applied.append({**row, "product_id": variant["product"]["id"] if variant else product_id})
         except (RuntimeError, ValueError, KeyError) as exc:
             errors.append(f"{sku!r}: {exc}")
     return applied, errors

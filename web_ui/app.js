@@ -39,6 +39,11 @@ function showPreview(result) {
   for (const item of result.rows) {
     const row = document.createElement("tr");
     const title = cell(row, item.title || item.sku); const sku = document.createElement("small"); sku.textContent = item.sku; title.append(sku);
+    for (const image of item.images || []) {
+      const img = document.createElement("img");
+      img.src = "/api/images/" + image.id; img.alt = item.title || item.sku;
+      img.className = "product-image"; img.loading = "lazy"; title.append(img);
+    }
     const action = cell(row, ""); const badge = document.createElement("span"); badge.className = "badge";
     badge.textContent = labels[item.action] || item.action; action.append(badge);
     if (item.publish && item.action === "update") action.append(document.createTextNode(" · Online Store"));
@@ -64,12 +69,12 @@ async function poll() {
           else {
             planId = null;
             errors(job.result.errors);
-            $("status").textContent = `${job.result.applied} productos sincronizados · ${job.result.errors.length} errores. Genera otra vista previa para actualizar el estado.`;
+            $("status").textContent = `${job.result.applied} productos sincronizados · ${job.result.images_uploaded || 0} imágenes enviadas · ${job.result.errors.length} errores. Genera otra vista previa para actualizar el estado.`;
           }
         }
         break;
       }
-      $("status").textContent = job.operation === "preview" ? "Consultando OIS y Shopify…" : "Aplicando cambios en Shopify…";
+      $("status").textContent = ["preview", "images-preview"].includes(job.operation) ? "Consultando OIS y Shopify…" : "Aplicando cambios en Shopify…";
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
   } catch (error) { planId = null; errors([error.message]); $("status").textContent = "La operación requiere atención."; }
@@ -82,7 +87,7 @@ async function start(operation, data = {}) {
 }
 $("preview").onclick = () => { planId = null; start("preview"); };
 $("apply").onclick = () => {
-  $("confirm-text").textContent = `Se aplicarán cambios a ${changed} productos. El inventario se sincronizará en Shop location y los productos indicados se publicarán en Online Store.`;
+  $("confirm-text").textContent = `Se aplicarán cambios a ${changed} productos. Se enviarán también sus imágenes. El inventario se sincronizará en Shop location y los productos indicados se publicarán en Online Store.`;
   $("confirm").showModal();
 };
 $("cancel").onclick = () => $("confirm").close();
@@ -92,7 +97,7 @@ $("config").onsubmit = async (event) => {
   try {
     const result = await api("/api/config", data); planId = null;
     $("saved").textContent = result.overridden.length ? "Guardado. Variables de terminal con prioridad: " + result.overridden.join(", ") : "Configuración guardada.";
-    for (const key of ["SHOPIFY_CLIENT_SECRET", "OIS_PRODUCTS_URL", "OIS_API_TOKEN"]) $("config").elements[key].value = "";
+    for (const key of ["SHOPIFY_CLIENT_SECRET", "OIS_PRODUCTS_URL", "OIS_API_TOKEN", "OIS_IMAGES_URL"]) $("config").elements[key].value = "";
     await loadConfig();
   } catch(error) { errors([error.message]); }
   finally { busy(false); }

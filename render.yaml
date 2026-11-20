@@ -23,3 +23,5 @@ services:
         sync: false
       - key: OIS_API_TOKEN
         sync: false
+      - key: OIS_IMAGES_URL
+        sync: false

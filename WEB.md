@@ -60,3 +60,17 @@ gratuito. Las variables del servicio tienen prioridad.
 Render puede suspender el servicio por inactividad. Al despertar, genera una
 vista previa nueva. Si se interrumpe una sincronización, consulta otra vista previa
 para verificar lo aplicado antes de continuar.
+
+## Imágenes de productos
+
+Configura OIS_IMAGES_URL con el endpoint Images y su clave en Environment de Render.
+Previsualizar cambios descarga las imágenes activas, las relaciona por cItemId
+y las muestra dentro de cada producto. Aplicar cambios sincroniza productos,
+precios, stock y todas sus imágenes pendientes en una sola operación.
+
+Las imágenes se suben después de crear o actualizar el producto. Los errores
+se muestran en el resultado para revisarlos con otra vista previa.
+Se admiten JPEG, PNG, GIF y WebP, hasta 20 MB por archivo.
+Los archivos temporales se pierden al reiniciar el servidor.
+El texto alternativo incluye una marca OIS para evitar cargas duplicadas.
+Shopify procesa las imágenes de forma asíncrona.

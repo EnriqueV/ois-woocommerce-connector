@@ -7,12 +7,15 @@ from pathlib import Path
 import secrets
 import threading
 import time
+from tempfile import TemporaryDirectory
 from concurrent.futures import ThreadPoolExecutor
 
 from dotenv import set_key
-from flask import Flask, jsonify, render_template, request, session, redirect, url_for
+from flask import Flask, jsonify, render_template, request, session, redirect, url_for, send_file
 
 from werkzeug.security import generate_password_hash, check_password_hash
+
+from product_images import prepare_images, upload_image
 
 from ois_client import OISClient
 from shopify_sync import ShopifyClient, apply_preview, preview, read_connector_env
@@ -24,8 +27,9 @@ FIELDS = {
     "SHOPIFY_CLIENT_SECRET": None,
     "OIS_PRODUCTS_URL": "OIS Products URL",
     "OIS_API_TOKEN": "Token / API Key",
+    "OIS_IMAGES_URL": None,
 }
-SECRET_FIELDS = {"SHOPIFY_CLIENT_SECRET", "OIS_API_TOKEN", "OIS_PRODUCTS_URL"}
+SECRET_FIELDS = {"SHOPIFY_CLIENT_SECRET", "OIS_API_TOKEN", "OIS_PRODUCTS_URL", "OIS_IMAGES_URL"}
 
 
 def configuration():
@@ -51,13 +55,19 @@ def create_app():
         raise RuntimeError("Configura ADMIN_USERNAME y ADMIN_PASSWORD en .env o en el hosting.")
     password_hash = generate_password_hash(password)
     auth_version = sha256((username + "\0" + password).encode()).hexdigest()
-    app.secret_key = env.get("SESSION_SECRET") or secrets.token_bytes(32)
+    session_secret = env.get("SESSION_SECRET", "").strip()
+    if env.get("RENDER") and not session_secret:
+        raise RuntimeError(
+            "Configura SESSION_SECRET en Environment de Render con un valor aleatorio estable."
+        )
+    app.secret_key = session_secret or secrets.token_bytes(32)
     allowed_hosts = {"127.0.0.1", "localhost"}
     allowed_hosts.update(host.strip() for host in env.get("ALLOWED_HOSTS", "").split(",") if host.strip())
     if env.get("RENDER_EXTERNAL_HOSTNAME"):
         allowed_hosts.add(env["RENDER_EXTERNAL_HOSTNAME"])
     app.config.update(
         SESSION_COOKIE_SECURE=bool(env.get("RENDER")),
+        SESSION_COOKIE_NAME="ois_shopify_session",
         PERMANENT_SESSION_LIFETIME=timedelta(hours=8),
     )
     login_attempts = []
@@ -65,7 +75,9 @@ def create_app():
     app.config.update(MAX_CONTENT_LENGTH=32768, SESSION_COOKIE_SAMESITE="Strict", SESSION_COOKIE_HTTPONLY=True)
     executor = ThreadPoolExecutor(max_workers=1)
     lock = threading.Lock()
-    state = {"job": None, "plan": None}
+    state = {"job": None, "plan": None, "images": None}
+    image_files = TemporaryDirectory(prefix="ois-images-")
+    app.extensions["image_files"] = image_files
 
     def safe_error(exc, config):
         if isinstance(exc, (RuntimeError, ValueError)):
@@ -91,7 +103,14 @@ def create_app():
             if not secrets.compare_digest(
                 request.headers.get("X-CSRF-Token") or request.form.get("csrf", ""), session["csrf"]
             ):
-                return jsonify(error="Recarga la página y vuelve a intentar."), 403
+                if request.endpoint == "login":
+                    session.clear()
+                    session["csrf"] = secrets.token_hex(32)
+                    return render_template(
+                        "login.html", csrf=session["csrf"],
+                        error="La sesión del formulario venció. Ingresa tus credenciales otra vez.",
+                    ), 403
+                return jsonify(error="La sesión del formulario venció. Recarga la página."), 403
 
     @app.after_request
     def private_response(response):
@@ -181,6 +200,19 @@ def create_app():
                 except Exception:
                     raise RuntimeError("No se pudo consultar OIS. Revisa la URL y el token.") from None
                 location, rows, errors = preview(client, catalog)
+                image_rows = []
+                if config["OIS_IMAGES_URL"]:
+                    for path in Path(image_files.name).iterdir():
+                        path.unlink()
+                    image_rows, image_errors = prepare_images(client, config, image_files.name, catalog)
+                    errors.extend(image_errors)
+                for row in rows:
+                    matching = [image for image in image_rows if image["sku"] == row["sku"]]
+                    row["images"] = [
+                        {"id": image["id"], "status": image["status"]} for image in matching
+                    ]
+                    if row["action"] == "unchanged" and any(image["status"] == "upload" for image in matching):
+                        row["action"] = "update"
                 plan_id = secrets.token_hex(16)
                 result = {
                     "received": len(catalog["ResultItems"]),
@@ -192,14 +224,27 @@ def create_app():
                     "plan_id": plan_id,
                 }
                 with lock:
+                    state["images"] = {"rows": image_rows}
                     state["plan"] = {
                         "id": plan_id, "client": client, "location": location,
                         "rows": [row for row in rows if row["action"] != "unchanged"],
                         "config": config, "expires": time.monotonic() + 1800,
+                        "images": image_rows,
                     }
             else:
                 applied, errors = apply_preview(plan["client"], plan["location"], plan["rows"])
-                result = {"applied": len(applied), "errors": errors}
+                products = {row["sku"]: row["product_id"] for row in applied}
+                uploaded = 0
+                for image in plan["images"]:
+                    if image["status"] != "upload" or image["sku"] not in products:
+                        continue
+                    try:
+                        uploaded += int(upload_image(
+                            plan["client"], {**image, "product_id": products[image["sku"]]},
+                        ))
+                    except Exception as exc:
+                        errors.append(f"{image['sku']}: {safe_error(exc, config)}")
+                result = {"applied": len(applied), "images_uploaded": uploaded, "errors": errors}
             # Serialize through Flask only after the job has finished.
             with lock:
                 job.update(status="done", result=result)
@@ -228,6 +273,18 @@ def create_app():
             state["job"] = job
             executor.submit(run_job, job, operation, config, plan)
             return jsonify(job), 202
+
+    @app.get("/api/images/<image_id>")
+    def image_file(image_id):
+        with lock:
+            images = state["images"]
+            row = next((row for row in images["rows"] if row["id"] == image_id), None) if images else None
+            if row is None:
+                return jsonify(error="Consulta las imágenes nuevamente."), 404
+            return send_file(
+                row["path"], mimetype=row["mime"],
+                as_attachment=request.args.get("download") == "1", download_name=row["filename"],
+            )
 
     @app.get("/api/job")
     def job_status():

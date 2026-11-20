@@ -18,7 +18,7 @@
 <div><span>Sin cambios / omitidos</span><strong id="other">—</strong></div>
 </section>
 <section class="panel">
-<div class="panel-head"><div><h2>Vista previa</h2><p>Los productos nuevos incluyen Unidad y Caja y se publican en Online Store.</p></div><button id="apply" disabled>Aplicar cambios</button></div>
+<div class="panel-head"><div><h2>Vista previa</h2><p>Los productos se sincronizan con sus imágenes. Los nuevos incluyen Unidad y Caja.</p></div><button id="apply" disabled>Aplicar cambios</button></div>
 <p class="stock-note">El stock de OIS se asigna a Caja. Unidad se crea con stock cero.</p>
 <div class="table-scroll"><table><thead><tr><th>Producto / SKU</th><th>Acción</th><th>Precio Caja</th><th>Precio Unidad</th><th>Stock Caja</th></tr></thead><tbody id="rows"><tr><td colspan="5" class="empty">Genera una vista previa para ver los productos.</td></tr></tbody></table></div>
 <div id="errors" role="alert"></div>
@@ -30,6 +30,7 @@
 <label>Client ID<input name="SHOPIFY_CLIENT_ID" autocomplete="off"></label>
 <label>Client secret<input name="SHOPIFY_CLIENT_SECRET" type="password" autocomplete="new-password"></label>
 <label>URL de productos OIS<input name="OIS_PRODUCTS_URL" type="password" autocomplete="new-password" placeholder="URL base o URL completa con ?key="></label>
+<label>URL de imágenes OIS<input name="OIS_IMAGES_URL" type="password" autocomplete="new-password" placeholder="URL completa de Images con ?key="></label>
 <label>Token de OIS<input name="OIS_API_TOKEN" type="password" autocomplete="new-password"></label>
 </div><button type="submit" class="secondary">Guardar configuración</button><span id="saved" role="status"></span></form>
 </details>
